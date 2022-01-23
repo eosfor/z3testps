@@ -1,0 +1,1 @@
+﻿[![Build Status](https://eosfor.visualstudio.com/z3testps/_apis/build/status/eosfor.z3testps?branchName=master)](https://eosfor.visualstudio.com/z3testps/_build/latest?definitionId=5&branchName=master)
