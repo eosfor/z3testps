@@ -56,7 +56,11 @@ namespace z3testps
                 s.Add(ctx.MkGt(TargetVMIndex[targetObject].MemoryGB, sourceObject.ram));
             }
 
-            base.ProcessRecord();
+            if (s.Check() == Status.SATISFIABLE)
+            {
+                var m = s.Model;
+                WriteObject(m);
+            }
         }
 
         private Dictionary<string, TargetVMRecord> MakeTargetVmDictionary()
