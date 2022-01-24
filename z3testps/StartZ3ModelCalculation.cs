@@ -22,8 +22,8 @@ namespace z3testps
             var zero = ctx.MkNumeral(0, ctx.MkIntSort());
             var one = ctx.MkNumeral(1, ctx.MkIntSort());
 
-            var existingVMs = ctx.MkEnumSort("existingVMs", SourceVM.Select(x => x.Properties["vmid"].Value.ToString()).ToArray() );
-            var vmSizes = ctx.MkEnumSort("vmSizes", TargetVM.Select(x => x.Properties["Name"].Value.ToString()).ToArray());
+            var existingVMs = ctx.MkEnumSort("existingVMs", SourceVMIndex.Keys.ToArray() );
+            var vmSizes = ctx.MkEnumSort("vmSizes", TargetVMIndex.Keys.ToArray());
 
             var selectedSize = new Dictionary<string, Expr>();
 
@@ -68,41 +68,41 @@ namespace z3testps
             Dictionary<string, TargetVMRecord> TargetVMIndex = new Dictionary<string, TargetVMRecord>();
             foreach (var targetVM in TargetVM)
             {
-                TargetVMIndex[targetVM.Properties["Name"].ToString()] = new TargetVMRecord()
+                TargetVMIndex[targetVM.Properties["Name"].Value.ToString()] = new TargetVMRecord()
                 {
-                    AcceleratedNetworkingEnabled = targetVM.Properties["AcceleratedNetworkingEnabled"].ToString(),
-                    ACUs = targetVM.Properties["ACUs"].ToString(),
-                    CapacityReservationSupported = targetVM.Properties["CapacityReservationSupported"].ToString(),
-                    CombinedTempDiskAndCachedIOPS = targetVM.Properties["CombinedTempDiskAndCachedIOPS"].ToString(),
+                    AcceleratedNetworkingEnabled = targetVM.Properties["AcceleratedNetworkingEnabled"].Value.ToString(),
+                    ACUs = targetVM.Properties["ACUs"].Value.ToString(),
+                    CapacityReservationSupported = targetVM.Properties["CapacityReservationSupported"].Value.ToString(),
+                    CombinedTempDiskAndCachedIOPS = targetVM.Properties["CombinedTempDiskAndCachedIOPS"].Value.ToString(),
                     CombinedTempDiskAndCachedReadBytesPerSecond =
-                        targetVM.Properties["CombinedTempDiskAndCachedReadBytesPerSecond"].ToString(),
+                        targetVM.Properties["CombinedTempDiskAndCachedReadBytesPerSecond"].Value.ToString(),
                     CombinedTempDiskAndCachedWriteBytesPerSecond =
-                        targetVM.Properties["CombinedTempDiskAndCachedWriteBytesPerSecond"].ToString(),
-                    CpuArchitectureType = targetVM.Properties["CpuArchitectureType"].ToString(),
-                    cpuToRamRatio = targetVM.Properties["cpuToRamRatio"].ToString(),
-                    EncryptionAtHostSupported = targetVM.Properties["EncryptionAtHostSupported"].ToString(),
-                    EphemeralOSDiskSupported = targetVM.Properties["EphemeralOSDiskSupported"].ToString(),
-                    HyperVGenerations = targetVM.Properties["HyperVGenerations"].ToString(),
-                    LowPriorityCapable = targetVM.Properties["LowPriorityCapable"].ToString(),
-                    MaxDataDiskCount = targetVM.Properties["MaxDataDiskCount"].ToString(),
-                    MaxNetworkInterfaces = targetVM.Properties["MaxNetworkInterfaces"].ToString(),
-                    MaxResourceVolumeMB = targetVM.Properties["MaxResourceVolumeMB"].ToString(),
-                    MemoryGB = targetVM.Properties["MemoryGB"].ToString(),
-                    MemoryGBFlattened = targetVM.Properties["MemoryGBFlattened"].ToString(),
+                        targetVM.Properties["CombinedTempDiskAndCachedWriteBytesPerSecond"].Value.ToString(),
+                    CpuArchitectureType = targetVM.Properties["CpuArchitectureType"].Value.ToString(),
+                    cpuToRamRatio = targetVM.Properties["cpuToRamRatio"].Value.ToString(),
+                    EncryptionAtHostSupported = targetVM.Properties["EncryptionAtHostSupported"].Value.ToString(),
+                    EphemeralOSDiskSupported = targetVM.Properties["EphemeralOSDiskSupported"].Value.ToString(),
+                    HyperVGenerations = targetVM.Properties["HyperVGenerations"].Value.ToString(),
+                    LowPriorityCapable = targetVM.Properties["LowPriorityCapable"].Value.ToString(),
+                    MaxDataDiskCount = targetVM.Properties["MaxDataDiskCount"].Value.ToString(),
+                    MaxNetworkInterfaces = targetVM.Properties["MaxNetworkInterfaces"].Value.ToString(),
+                    MaxResourceVolumeMB = targetVM.Properties["MaxResourceVolumeMB"].Value.ToString(),
+                    MemoryGB = targetVM.Properties["MemoryGB"].Value.ToString(),
+                    MemoryGBFlattened = targetVM.Properties["MemoryGBFlattened"].Value.ToString(),
                     MemoryPreservingMaintenanceSupported =
-                        targetVM.Properties["MemoryPreservingMaintenanceSupported"].ToString(),
-                    Name = targetVM.Properties["Name"].ToString(),
-                    OSVhdSizeMB = targetVM.Properties["OSVhdSizeMB"].ToString(),
-                    PremiumIO = targetVM.Properties["PremiumIO"].ToString(),
-                    RdmaEnabled = targetVM.Properties["RdmaEnabled"].ToString(),
-                    retailPrice = targetVM.Properties["retailPrice"].ToString(),
-                    retailPriceFlattened = targetVM.Properties["retailPriceFlattened"].ToString(),
-                    Size = targetVM.Properties["Size"].ToString(),
-                    Tier = targetVM.Properties["Tier"].ToString(),
-                    vCPUs = targetVM.Properties["vCPUs"].ToString(),
-                    vCPUsAvailable = targetVM.Properties["vCPUsAvailable"].ToString(),
-                    vCPUsPerCore = targetVM.Properties["vCPUsPerCore"].ToString(),
-                    VMDeploymentTypes = targetVM.Properties["VMDeploymentTypes"].ToString()
+                        targetVM.Properties["MemoryPreservingMaintenanceSupported"].Value.ToString(),
+                    Name = targetVM.Properties["Name"].Value.ToString(),
+                    OSVhdSizeMB = targetVM.Properties["OSVhdSizeMB"].Value.ToString(),
+                    PremiumIO = targetVM.Properties["PremiumIO"].Value.ToString(),
+                    RdmaEnabled = targetVM.Properties["RdmaEnabled"].Value.ToString(),
+                    retailPrice = targetVM.Properties["retailPrice"].Value.ToString(),
+                    retailPriceFlattened = targetVM.Properties["retailPriceFlattened"].Value.ToString(),
+                    Size = targetVM.Properties["Size"].Value.ToString(),
+                    Tier = targetVM.Properties["Tier"].Value.ToString(),
+                    vCPUs = targetVM.Properties["vCPUs"].Value.ToString(),
+                    vCPUsAvailable = targetVM.Properties["vCPUsAvailable"].Value.ToString(),
+                    vCPUsPerCore = targetVM.Properties["vCPUsPerCore"].Value.ToString(),
+                    VMDeploymentTypes = targetVM.Properties["VMDeploymentTypes"].Value.ToString()
                 };
             }
 
@@ -114,12 +114,12 @@ namespace z3testps
             Dictionary<string, SourceVMRecord> SourceVMIndex = new Dictionary<string, SourceVMRecord>();
             foreach (PSObject sourceVM in SourceVM)
             {
-                SourceVMIndex[sourceVM.Properties["vmid"].ToString()] = new SourceVMRecord()
+                SourceVMIndex[sourceVM.Properties["vmid"].Value.ToString()] = new SourceVMRecord()
                 {
-                    vmid = sourceVM.Properties["vmid"].ToString(),
-                    cpu = int.Parse(sourceVM.Properties["cpu"].ToString()),
-                    ram = int.Parse(sourceVM.Properties["ram"].ToString()),
-                    datadisk = int.Parse(sourceVM.Properties["datadisk"].ToString())
+                    vmid = sourceVM.Properties["vmid"].Value.ToString(),
+                    cpu = int.Parse(sourceVM.Properties["cpu"].Value.ToString()),
+                    ram = int.Parse(sourceVM.Properties["ram"].Value.ToString()),
+                    datadisk = int.Parse(sourceVM.Properties["datadisk"].Value.ToString())
                 };
             }
 
