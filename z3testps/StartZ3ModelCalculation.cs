@@ -1,4 +1,5 @@
-﻿using System.Management.Automation;
+﻿using System.CodeDom;
+using System.Management.Automation;
 using Microsoft.Z3;
 using System.Linq;
 
@@ -15,115 +16,232 @@ namespace z3testps
 
         protected override void ProcessRecord()
         {
-            var SourceVMIndex = MakeSourceVmDictionary();
-            var TargetVMIndex = MakeTargetVmDictionary();
+            //var SourceVMIndex = MakeSourceVmDictionary();
+            //var TargetVMIndex = MakeTargetVmDictionary();
+
+            string[] sourceVmNames = MakeSourceVMNamesArray();
+            SourceVMRecord[] sourceVMs = MakeSourceVMsArray();
+            
+            string[] targetVmNames = MakeTargetVMNamesArray();
+            TargetVMRecord[] targetVMs = MakeTargetVMsArray();
 
             var ctx = new Context();
             var zero = ctx.MkNumeral(0, ctx.MkIntSort());
             var one = ctx.MkNumeral(1, ctx.MkIntSort());
 
-            var existingVMs = ctx.MkEnumSort("existingVMs", SourceVMIndex.Keys.ToArray() );
-            var vmSizes = ctx.MkEnumSort("vmSizes", TargetVMIndex.Keys.ToArray());
-
-            var selectedSize = new Dictionary<string, Expr>();
+            var existingVMs = ctx.MkEnumSort("existingVMs", sourceVmNames);
+            var vmSizes = ctx.MkEnumSort("vmSizes", targetVmNames);
 
 
-            for (int i = 0; i < SourceVM.Length; i++)
+            #region Populate Data Arrays from input data
+            
+            ArraySort existingVMSort = ctx.MkArraySort(ctx.IntSort, ctx.IntSort);
+            ArraySort vmSizeSort = ctx.MkArraySort(ctx.IntSort, ctx.IntSort);
+
+            #region source-data
+            ArrayExpr vmCPU = (ArrayExpr) ctx.MkConst(ctx.MkSymbol("vmCPU"), existingVMSort);
+            for (int i = 0; i < sourceVMs.Length; i++)
             {
-                var name = SourceVM[i].Properties["vmid"].ToString();
-                selectedSize.Add(name, ctx.MkConst(name, vmSizes));
+                var x = existingVMs.Consts[i];
+                ctx.MkStore(vmCPU, ctx.MkInt(i), ctx.MkInt(sourceVMs[i].cpu));
             }
 
-            var s = ctx.MkSolver();
+            ArrayExpr vmRAM = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmRAM"), existingVMSort);
 
-            //constraint forall(vm in existingVMs)(
-            //    vmSizeRAM[selectedSize[vm]] >= vmRAM[vm]
-            //);
-            foreach (var el in existingVMs.Consts)
+            for (int i = 0; i < sourceVMs.Length; i++)
             {
-                var sourceObject = SourceVMIndex[el.ToString()];
-                var targetObject = selectedSize[el.ToString()];
-                s.Add(ctx.MkGt(TargetVMIndex[targetObject].vCPUs, sourceObject.cpu));
+                var x = existingVMs.Consts[i];
+                ctx.MkStore(vmRAM, ctx.MkInt(i), ctx.MkInt(sourceVMs[i].ram));
+            }
+            #endregion source-data
+
+            #region target-data
+            ArrayExpr vmSizeCPU = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizeCPU"), vmSizeSort);
+
+            for (int i = 0; i < targetVMs.Length; i++)
+            {
+                var x = vmSizes.Consts[i];
+                ctx.MkStore(vmSizeCPU, ctx.MkInt(i), ctx.MkInt(targetVMs[i].vCPUs));
             }
 
-            //constraint forall(vm in existingVMs)(
-            //    vmSizeCPU[selectedSize[vm]] >= vmCPU[vm] * 0.8
-            //);
-            foreach (var el in existingVMs.Consts)
+            ArrayExpr vmSizeRAM = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizeRAM"), vmSizeSort);
+
+            for (int i = 0; i < targetVMs.Length; i++)
             {
-                var sourceObject = SourceVMIndex[el.ToString()];
-                var targetObject = selectedSize[el.ToString()];
-                s.Add(ctx.MkGt(TargetVMIndex[targetObject].MemoryGB, sourceObject.ram));
+                var x = vmSizes.Consts[i];
+                ctx.MkStore(vmSizeRAM, ctx.MkInt(i), ctx.MkInt((int)double.Parse(targetVMs[i].MemoryGB)));
             }
+
+            ArrayExpr vmSizePrice = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizePrice"), vmSizeSort);
+
+            for (int i = 0; i < targetVMs.Length; i++)
+            {
+                var x = vmSizes.Consts[i];
+                ctx.MkStore(vmSizePrice, ctx.MkInt(i), ctx.MkInt((int)double.Parse(targetVMs[i].retailPriceFlattened)));
+            }
+
+            ArrayExpr vmSizeACU = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizeACU"), vmSizeSort);
+            
+
+            for (int i = 0; i < targetVMs.Length; i++)
+            {
+                var x = vmSizes.Consts[i];
+                ctx.MkStore(vmSizeACU, ctx.MkInt(i), ctx.MkInt((int)double.Parse(targetVMs[i].ACUs)));
+            }
+            #endregion target-data
+            
+            #endregion
+
+            // decision variables
+            Expr[] selectedSizeArr = new Expr[sourceVMs.Length];
+            string[] selectedSizeNames = new string[sourceVMs.Length];
+
+            for (int i = 0; i < sourceVMs.Length; i++)
+            {
+                string n = sourceVMs[i].vmid;
+                selectedSizeNames[i] = n;
+                selectedSizeArr[i] = ctx.MkConst(n, ctx.IntSort);
+            }
+
+            // optimization objectives
+            var totalPrice = ctx.MkConst("totalPrice", ctx.IntSort);
+            var totalACU = ctx.MkConst("totalPrice", ctx.IntSort);
+
+            var s = ctx.MkOptimize(); //ctx.MkSolver();
+
+
+            for (int i = 0; i < selectedSizeArr.Length; i++) //for each variable
+            {
+                var constraint = ctx.MkFalse();
+                var decisionVar = selectedSizeArr[i];
+
+                var sourceCpu = ctx.MkSelect(vmCPU, ctx.MkInt(i));
+                var sourceRam = ctx.MkSelect(vmRAM, ctx.MkInt(i));
+
+                for (int j = 0; j < targetVMs.Length; j++)
+                {
+                    var targetCpu = ctx.MkSelect(vmSizeCPU, decisionVar);
+                    var targetRam = ctx.MkSelect(vmSizeRAM, decisionVar);
+
+
+                    var c = ctx.MkGt((ArithExpr)targetCpu, (ArithExpr)sourceCpu);
+                    var r = ctx.MkGt((ArithExpr)targetRam, (ArithExpr)sourceRam);
+
+                    var v = ctx.MkAnd(c, r);
+                    constraint = ctx.MkOr( v, constraint);
+                }
+                s.Assert(constraint);
+            }
+
+            for (int i = 0; i < selectedSizeArr.Length; i++)
+            {
+                var decisionVar = selectedSizeArr[i];
+                
+                var targetPrice = ctx.MkSelect(vmSizePrice, decisionVar);
+                var targetACU = ctx.MkSelect(vmSizeACU, decisionVar);
+
+                totalPrice = ctx.MkAdd((ArithExpr)targetPrice, (ArithExpr)totalPrice);
+                totalACU = ctx.MkAdd((ArithExpr)targetACU, (ArithExpr)totalACU);
+            }
+
+            var totalPriceHandle = s.MkMinimize(totalPrice); // minimize total price
+            var totalAcuHandle = s.MkMaximize(totalACU);     // 
+
+
 
             if (s.Check() == Status.SATISFIABLE)
             {
                 var m = s.Model;
                 WriteObject(m);
+                WriteObject(totalPriceHandle);
+                WriteObject(totalAcuHandle);
             }
         }
 
-        private Dictionary<string, TargetVMRecord> MakeTargetVmDictionary()
+        private SourceVMRecord[] MakeSourceVMsArray()
         {
-            Dictionary<string, TargetVMRecord> TargetVMIndex = new Dictionary<string, TargetVMRecord>();
-            foreach (var targetVM in TargetVM)
+            SourceVMRecord[] ret = new SourceVMRecord[SourceVM.Length];
+            for (int i = 0; i < SourceVM.Length; i++)
             {
-                TargetVMIndex[targetVM.Properties["Name"].Value.ToString()] = new TargetVMRecord()
+                ret[i] = new SourceVMRecord()
                 {
-                    AcceleratedNetworkingEnabled = targetVM.Properties["AcceleratedNetworkingEnabled"].Value.ToString(),
-                    ACUs = targetVM.Properties["ACUs"].Value.ToString(),
-                    CapacityReservationSupported = targetVM.Properties["CapacityReservationSupported"].Value.ToString(),
-                    CombinedTempDiskAndCachedIOPS = targetVM.Properties["CombinedTempDiskAndCachedIOPS"].Value.ToString(),
+                    vmid = SourceVM[i].Properties["vmid"].Value.ToString(),
+                    cpu = int.Parse(SourceVM[i].Properties["cpu"].Value.ToString()),
+                    ram = int.Parse(SourceVM[i].Properties["ram"].Value.ToString()),
+                    datadisk = int.Parse(SourceVM[i].Properties["datadisk"].Value.ToString())
+                };
+            }
+
+            return ret;
+        }
+
+        private TargetVMRecord[] MakeTargetVMsArray()
+        {
+            TargetVMRecord[] ret = new TargetVMRecord[TargetVM.Length];
+            for (int i = 0; i < ret.Length; i++)
+            {
+                ret[i] = new TargetVMRecord()
+                {
+                    AcceleratedNetworkingEnabled = TargetVM[i].Properties["AcceleratedNetworkingEnabled"].Value.ToString(),
+                    ACUs = TargetVM[i].Properties["ACUs"].Value.ToString(),
+                    CapacityReservationSupported = TargetVM[i].Properties["CapacityReservationSupported"].Value.ToString(),
+                    CombinedTempDiskAndCachedIOPS = TargetVM[i].Properties["CombinedTempDiskAndCachedIOPS"].Value.ToString(),
                     CombinedTempDiskAndCachedReadBytesPerSecond =
-                        targetVM.Properties["CombinedTempDiskAndCachedReadBytesPerSecond"].Value.ToString(),
+                        TargetVM[i].Properties["CombinedTempDiskAndCachedReadBytesPerSecond"].Value.ToString(),
                     CombinedTempDiskAndCachedWriteBytesPerSecond =
-                        targetVM.Properties["CombinedTempDiskAndCachedWriteBytesPerSecond"].Value.ToString(),
-                    CpuArchitectureType = targetVM.Properties["CpuArchitectureType"].Value.ToString(),
-                    cpuToRamRatio = targetVM.Properties["cpuToRamRatio"].Value.ToString(),
-                    EncryptionAtHostSupported = targetVM.Properties["EncryptionAtHostSupported"].Value.ToString(),
-                    EphemeralOSDiskSupported = targetVM.Properties["EphemeralOSDiskSupported"].Value.ToString(),
-                    HyperVGenerations = targetVM.Properties["HyperVGenerations"].Value.ToString(),
-                    LowPriorityCapable = targetVM.Properties["LowPriorityCapable"].Value.ToString(),
-                    MaxDataDiskCount = targetVM.Properties["MaxDataDiskCount"].Value.ToString(),
-                    MaxNetworkInterfaces = targetVM.Properties["MaxNetworkInterfaces"].Value.ToString(),
-                    MaxResourceVolumeMB = targetVM.Properties["MaxResourceVolumeMB"].Value.ToString(),
-                    MemoryGB = targetVM.Properties["MemoryGB"].Value.ToString(),
-                    MemoryGBFlattened = targetVM.Properties["MemoryGBFlattened"].Value.ToString(),
+                        TargetVM[i].Properties["CombinedTempDiskAndCachedWriteBytesPerSecond"].Value.ToString(),
+                    CpuArchitectureType = TargetVM[i].Properties["CpuArchitectureType"].Value.ToString(),
+                    cpuToRamRatio = TargetVM[i].Properties["cpuToRamRatio"].Value.ToString(),
+                    EncryptionAtHostSupported = TargetVM[i].Properties["EncryptionAtHostSupported"].Value.ToString(),
+                    EphemeralOSDiskSupported = TargetVM[i].Properties["EphemeralOSDiskSupported"].Value.ToString(),
+                    HyperVGenerations = TargetVM[i].Properties["HyperVGenerations"].Value.ToString(),
+                    LowPriorityCapable = TargetVM[i].Properties["LowPriorityCapable"].Value.ToString(),
+                    MaxDataDiskCount = TargetVM[i].Properties["MaxDataDiskCount"].Value.ToString(),
+                    MaxNetworkInterfaces = TargetVM[i].Properties["MaxNetworkInterfaces"].Value.ToString(),
+                    MaxResourceVolumeMB = TargetVM[i].Properties["MaxResourceVolumeMB"].Value.ToString(),
+                    MemoryGB = TargetVM[i].Properties["MemoryGB"].Value.ToString(),
+                    MemoryGBFlattened = TargetVM[i].Properties["MemoryGBFlattened"].Value.ToString(),
                     MemoryPreservingMaintenanceSupported =
-                        targetVM.Properties["MemoryPreservingMaintenanceSupported"].Value.ToString(),
-                    Name = targetVM.Properties["Name"].Value.ToString(),
-                    OSVhdSizeMB = targetVM.Properties["OSVhdSizeMB"].Value.ToString(),
-                    PremiumIO = targetVM.Properties["PremiumIO"].Value.ToString(),
-                    RdmaEnabled = targetVM.Properties["RdmaEnabled"].Value.ToString(),
-                    retailPrice = targetVM.Properties["retailPrice"].Value.ToString(),
-                    retailPriceFlattened = targetVM.Properties["retailPriceFlattened"].Value.ToString(),
-                    Size = targetVM.Properties["Size"].Value.ToString(),
-                    Tier = targetVM.Properties["Tier"].Value.ToString(),
-                    vCPUs = targetVM.Properties["vCPUs"].Value.ToString(),
-                    vCPUsAvailable = targetVM.Properties["vCPUsAvailable"].Value.ToString(),
-                    vCPUsPerCore = targetVM.Properties["vCPUsPerCore"].Value.ToString(),
-                    VMDeploymentTypes = targetVM.Properties["VMDeploymentTypes"].Value.ToString()
+                        TargetVM[i].Properties["MemoryPreservingMaintenanceSupported"].Value.ToString(),
+                    Name = TargetVM[i].Properties["Name"].Value.ToString(),
+                    OSVhdSizeMB = TargetVM[i].Properties["OSVhdSizeMB"].Value.ToString(),
+                    PremiumIO = TargetVM[i].Properties["PremiumIO"].Value.ToString(),
+                    RdmaEnabled = TargetVM[i].Properties["RdmaEnabled"].Value.ToString(),
+                    retailPrice = TargetVM[i].Properties["retailPrice"].Value.ToString(),
+                    retailPriceFlattened = TargetVM[i].Properties["retailPriceFlattened"].Value.ToString(),
+                    Size = TargetVM[i].Properties["Size"].Value.ToString(),
+                    Tier = TargetVM[i].Properties["Tier"].Value.ToString(),
+                    vCPUs = TargetVM[i].Properties["vCPUs"].Value.ToString(),
+                    vCPUsAvailable = TargetVM[i].Properties["vCPUsAvailable"].Value.ToString(),
+                    vCPUsPerCore = TargetVM[i].Properties["vCPUsPerCore"].Value.ToString(),
+                    VMDeploymentTypes = TargetVM[i].Properties["VMDeploymentTypes"].Value.ToString()
                 };
             }
 
-            return TargetVMIndex;
+            return ret;
         }
 
-        private Dictionary<string, SourceVMRecord> MakeSourceVmDictionary()
+        private string[] MakeTargetVMNamesArray()
         {
-            Dictionary<string, SourceVMRecord> SourceVMIndex = new Dictionary<string, SourceVMRecord>();
-            foreach (PSObject sourceVM in SourceVM)
+            string[] ret = new string[TargetVM.Length];
+            for (int i = 0; i < ret.Length; i++)
             {
-                SourceVMIndex[sourceVM.Properties["vmid"].Value.ToString()] = new SourceVMRecord()
-                {
-                    vmid = sourceVM.Properties["vmid"].Value.ToString(),
-                    cpu = int.Parse(sourceVM.Properties["cpu"].Value.ToString()),
-                    ram = int.Parse(sourceVM.Properties["ram"].Value.ToString()),
-                    datadisk = int.Parse(sourceVM.Properties["datadisk"].Value.ToString())
-                };
+                ret[i] = TargetVM[i].Properties["Name"].Value.ToString();
             }
 
-            return SourceVMIndex;
+            return ret;
+
+        }
+
+        private string[] MakeSourceVMNamesArray()
+        {
+            string[] ret = new string[SourceVM.Length];
+            for (int i = 0; i < ret.Length; i++)
+            {
+                ret[i] = SourceVM[i].Properties["vmid"].Value.ToString();
+            }
+
+            return ret;
         }
     }
 
