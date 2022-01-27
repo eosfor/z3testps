@@ -1,11 +1,17 @@
+## git clone somewhere
+
 ## run dotnet build in the project folder
+## it will put everything into c:\temp\z3testps\
 cd (join-path $env:HOMEDRIVE $env:HOMEPATH "source\repos\z3testps\z3testps")
 dotnet build && dotnet publish --self-contained --use-current-runtime -c Debug -o c:\temp\z3testps\
 
-## test
+## then simply open powershell
+## copy data files - vmdata.csv and vmCostACUData.csv to the output folder c:\temp\z3testps\
+## cd into it and you can run it
+
 cd "c:\temp\z3testps\"
 Import-Module .\z3testps.dll -Verbose
-$pid | clip
+$pid | clip ## this is to put the pwsh process id into the clipboard, so you can then pasete it to the VS to be able to attach to the process
 
 
 $sourceVMs = Import-Csv .\vmdata.csv
@@ -18,5 +24,5 @@ $targetSizes = import-csv ".\vmCostACUData.csv"
 $m = Start-Z3ModelCalculation -SourceVM $sourceVMs[0] -TargetVM $targetSizes
 $m.Consts | % {$_.Tostring()}
 
-## run with all source VMs
+## run with all source VMs - this run forever 
 $m = Start-Z3ModelCalculation -SourceVM $sourceVMs -TargetVM $targetSizes
