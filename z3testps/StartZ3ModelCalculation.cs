@@ -16,11 +16,11 @@ namespace z3testps
 
         protected override void ProcessRecord()
         {
-            SourceVMRecord[] sourceVMs = MakeSourceVMsArray();
-            TargetVMRecord[] targetVMs = MakeTargetVMsArray();
+            SourceVMRecord[] sourceVMs = MakeSourceVMsArray(); // length = 87
+            TargetVMRecord[] targetVMs = MakeTargetVMsArray(); // length = 240
 
             var ctx = new Context();
-            var s = ctx.MkOptimize(); //ctx.MkSolver();
+            var s = ctx.MkOptimize(); // ctx.MkSolver();
 
             #region Populate Data Arrays from input data
 
@@ -33,8 +33,9 @@ namespace z3testps
             ArrayExpr vmRAM = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmRAM"), existingVmSort);
             for (int i = 0; i < sourceVMs.Length; i++)
             {
-                vmCPU = ctx.MkStore(vmCPU, ctx.MkInt(i), ctx.MkInt(sourceVMs[i].cpu));
-                vmRAM = ctx.MkStore(vmRAM, ctx.MkInt(i), ctx.MkInt(sourceVMs[i].ram));
+                s.Assert(ctx.MkEq(ctx.MkSelect(vmCPU, ctx.MkInt(i)), ctx.MkInt(sourceVMs[i].cpu)));
+                s.Assert(ctx.MkEq(ctx.MkSelect(vmRAM, ctx.MkInt(i)), ctx.MkInt(sourceVMs[i].ram)));
+
             }
 
             #endregion source-data
@@ -48,10 +49,10 @@ namespace z3testps
             ArrayExpr vmSizeACU = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizeACU"), vmSizeSort);
             for (int i = 0; i < targetVMs.Length; i++)
             {
-                vmSizeCPU = ctx.MkStore(vmSizeCPU, ctx.MkInt(i), ctx.MkInt(targetVMs[i].vCPUs));
-                vmSizeRAM = ctx.MkStore(vmSizeRAM, ctx.MkInt(i), ctx.MkInt((int)double.Parse(targetVMs[i].MemoryGB)));
-                vmSizePrice = ctx.MkStore(vmSizePrice, ctx.MkInt(i), ctx.MkInt((int)double.Parse(targetVMs[i].retailPriceFlattened)));
-                vmSizeACU = ctx.MkStore(vmSizeACU, ctx.MkInt(i), ctx.MkInt((int) double.Parse(targetVMs[i].ACUs)));
+                s.Assert(ctx.MkEq(ctx.MkSelect(vmSizeCPU, ctx.MkInt(i)), ctx.MkInt(targetVMs[i].vCPUs)));
+                s.Assert(ctx.MkEq(ctx.MkSelect(vmSizeRAM, ctx.MkInt(i)), ctx.MkInt((int)double.Parse(targetVMs[i].MemoryGB))));
+                s.Assert(ctx.MkEq(ctx.MkSelect(vmSizePrice, ctx.MkInt(i)), ctx.MkInt((int)double.Parse(targetVMs[i].retailPriceFlattened))));
+                s.Assert(ctx.MkEq(ctx.MkSelect(vmSizeACU, ctx.MkInt(i)), ctx.MkInt((int)double.Parse(targetVMs[i].ACUs))));
             }
 
             #endregion target-data
@@ -69,11 +70,12 @@ namespace z3testps
                 s.Assert(constraint);
             }
 
-
+            // constraints
             for (int i = 0; i < selectedSizeArr.Length; i++) //for each variable
             {
                 BoolExpr? constraint = null;
                 var decisionVar = selectedSizeArr[i];
+
 
                 var sourceCpu = ctx.MkSelect(vmCPU, ctx.MkInt(i));
                 var sourceRam = ctx.MkSelect(vmRAM, ctx.MkInt(i));
@@ -81,9 +83,8 @@ namespace z3testps
                 var targetCpu = ctx.MkSelect(vmSizeCPU, decisionVar);
                 var targetRam = ctx.MkSelect(vmSizeRAM, decisionVar);
 
-
-                var c = ctx.MkGt((ArithExpr)targetCpu, (ArithExpr)sourceCpu);
-                var r = ctx.MkGt((ArithExpr)targetRam, (ArithExpr)sourceRam);
+                var c = ctx.MkGe((ArithExpr)targetCpu, (ArithExpr)sourceCpu);
+                var r = ctx.MkGe((ArithExpr)targetRam, (ArithExpr)sourceRam);
 
                 var v = ctx.MkAnd(c, r);
                 constraint = constraint == null ? ctx.MkOr(v) : ctx.MkOr(v, constraint);
@@ -120,7 +121,7 @@ namespace z3testps
                 var m = s.Model;
                 WriteObject(m);
                 WriteObject(totalPriceHandle);
-                //WriteObject(totalAcuHandle);
+                WriteObject(totalAcuHandle);
             }
         }
 
