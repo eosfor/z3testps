@@ -19,10 +19,19 @@ $sourceVMs  | % { $_.cpu = [int]$_.cpu; $_.ram = [int]$_.ram; $_.datadisk = [int
 
 $targetSizes = import-csv ".\vmCostACUData.csv"
 
-
+## Z3 RELATED SECTION
 ## run with only one source VM
 $m = Start-Z3ModelCalculation -SourceVM $sourceVMs[0] -TargetVM $targetSizes
 $m.Consts | % {$_.Tostring()}
 
 ## run with all source VMs - this run forever 
 $m = Start-Z3ModelCalculation -SourceVM $sourceVMs -TargetVM $targetSizes
+
+## see results
+$m.Decls | ? { $m.ConstInterp($_).ToString() -ne "0" } | % { "$($_.Name) -> $($m.ConstInterp($_))" }
+
+## OR-TOOLS RELATED SECTION
+$x = Start-OrToolsModelCalculation -SourceVM $sourceVMs -TargetVM $targetSizes
+
+## see results
+$x[0][1].VmMappingResult | ft -AutoSize
