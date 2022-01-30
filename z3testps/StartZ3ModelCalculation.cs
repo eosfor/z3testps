@@ -17,113 +17,79 @@ namespace z3testps
         protected override void ProcessRecord()
         {
             SourceVMRecord[] sourceVMs = MakeSourceVMsArray(SourceVM); // length = 87
-            TargetVMRecord[] targetVMs = MakeTargetVMsArray(SourceVM); // length = 240
+            TargetVMRecord[] targetVMs = MakeTargetVMsArray(TargetVM); // length = 240
+
+            int[] costVector = targetVMs.Select(x => (int)(double.Parse(x.retailPrice) * 10000)).ToArray();
+            int[] acuVector = targetVMs.Select(x => int.Parse(x.ACUs)).ToArray();
 
             var ctx = new Context();
-            var s = ctx.MkOptimize(); // ctx.MkSolver();
+            var s =  ctx.MkOptimize(); // ctx.MkSolver(); 
 
-            #region Populate Data Arrays from input data
 
-            ArraySort existingVmSort = ctx.MkArraySort(ctx.IntSort, ctx.IntSort);
-            ArraySort vmSizeSort = ctx.MkArraySort(ctx.IntSort, ctx.IntSort);
+            var zero = ctx.MkInt(0);
+            var one = ctx.MkInt(1);
 
-            #region source-data
-            
-            ArrayExpr vmCPU = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmCPU"), existingVmSort);
-            ArrayExpr vmRAM = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmRAM"), existingVmSort);
-            for (int i = 0; i < sourceVMs.Length; i++)
-            {
-                s.Assert(ctx.MkEq(ctx.MkSelect(vmCPU, ctx.MkInt(i)), ctx.MkInt(sourceVMs[i].cpu)));
-                s.Assert(ctx.MkEq(ctx.MkSelect(vmRAM, ctx.MkInt(i)), ctx.MkInt(sourceVMs[i].ram)));
 
-            }
-
-            #endregion source-data
-
-            #region target-data
-
-            //ArrayExpr vmSizeCPU =  ctx.MkArrayConst("vmSizeCPU", ctx.IntSort, ctx.IntSort);
-            ArrayExpr vmSizeCPU = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizeCPU"), vmSizeSort);
-            ArrayExpr vmSizeRAM = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizeRAM"), vmSizeSort);
-            ArrayExpr vmSizePrice = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizePrice"), vmSizeSort);
-            ArrayExpr vmSizeACU = (ArrayExpr)ctx.MkConst(ctx.MkSymbol("vmSizeACU"), vmSizeSort);
-            for (int i = 0; i < targetVMs.Length; i++)
-            {
-                s.Assert(ctx.MkEq(ctx.MkSelect(vmSizeCPU, ctx.MkInt(i)), ctx.MkInt(targetVMs[i].vCPUs)));
-                s.Assert(ctx.MkEq(ctx.MkSelect(vmSizeRAM, ctx.MkInt(i)), ctx.MkInt((int)double.Parse(targetVMs[i].MemoryGB) * 10000))); //a few hacks to get rid of doubles
-                s.Assert(ctx.MkEq(ctx.MkSelect(vmSizePrice, ctx.MkInt(i)), ctx.MkInt( (int)double.Parse(targetVMs[i].retailPrice) * 10000 ))); //a few hacks to get rid of doubles
-                s.Assert(ctx.MkEq(ctx.MkSelect(vmSizeACU, ctx.MkInt(i)), ctx.MkInt(int.Parse(targetVMs[i].ACUs))));
-            }
-
-            #endregion target-data
-            
-            #endregion
-
-            // decision variables
-            Expr[] selectedSizeArr = new Expr[sourceVMs.Length];
+            IntExpr[, ] selectedVMs = new IntExpr[sourceVMs.Length, targetVMs.Length];
 
             for (int i = 0; i < sourceVMs.Length; i++)
             {
-                string n = sourceVMs[i].vmid;
-                selectedSizeArr[i] = ctx.MkConst(n, ctx.IntSort);
-                var constraint = ctx.MkAnd(ctx.MkGe((ArithExpr) selectedSizeArr[i], ctx.MkInt(0)), ctx.MkLt((ArithExpr) selectedSizeArr[i], ctx.MkInt(targetVMs.Length)));
-                s.Assert(constraint);
+                for (int j = 0; j < targetVMs.Length; j++)
+                {
+                    selectedVMs[i,j] = ctx.MkIntConst($"{sourceVMs[i].vmid}-{targetVMs[j].Name}");
+                }
             }
 
-            // constraints
-            for (int i = 0; i < selectedSizeArr.Length; i++) //for each variable
+            var tmpPrice = new List<ArithExpr>();
+            var tmpAcu = new List<ArithExpr>();
+
+            for (int i = 0; i < sourceVMs.Length; i++)
             {
-                BoolExpr? constraint = null;
-                var decisionVar = selectedSizeArr[i];
+                var sourceVm = sourceVMs[i];
+                ArithExpr[] tmp = new ArithExpr[targetVMs.Length];
 
+                for (int j = 0; j < targetVMs.Length; j++)
+                {
+                    var targetVm = targetVMs[j];
+                    if ((int.Parse(targetVm.vCPUs) >= sourceVm.cpu * 0.8) && (double.Parse(targetVm.MemoryGB) >= sourceVm.ram))
+                    {
+                        tmp[j] = selectedVMs[i, j];
+                    }
+                    else
+                    {
+                        tmp[j] = zero;
+                    }
+                }
 
-                var sourceCpu = ctx.MkSelect(vmCPU, ctx.MkInt(i));
-                var sourceRam = ctx.MkSelect(vmRAM, ctx.MkInt(i));
-
-                var targetCpu = ctx.MkSelect(vmSizeCPU, decisionVar);
-                var targetRam = ctx.MkSelect(vmSizeRAM, decisionVar);
-
-                var c = ctx.MkGe((ArithExpr)targetCpu, (ArithExpr)sourceCpu);
-                var r = ctx.MkGe((ArithExpr)targetRam, (ArithExpr)sourceRam);
-
-                var v = ctx.MkAnd(c, r);
-                constraint = constraint == null ? ctx.MkOr(v) : ctx.MkOr(v, constraint);
-                
-                
-                s.Assert(constraint);
+                tmpPrice.Add(ScalProd(tmp, costVector, ctx));
+                tmpAcu.Add(ScalProd(tmp, acuVector, ctx));
+                s.Assert(ctx.MkEq(ctx.MkAdd(tmp), one));
             }
 
-
-            // optimization objectives
-
-            Expr? totalPrice = null;
-            Expr? totalAcu = null;
-
-
-            for (int i = 0; i < selectedSizeArr.Length; i++)
-            {
-                var decisionVar = selectedSizeArr[i];
-                
-                var targetPrice = ctx.MkSelect(vmSizePrice, decisionVar);
-                var targetACU = ctx.MkSelect(vmSizeACU, decisionVar);
-
-
-                totalPrice = totalPrice == null? ctx.MkAdd((ArithExpr)targetPrice) : ctx.MkAdd((ArithExpr)targetPrice, (ArithExpr)totalPrice);
-                totalAcu = totalAcu == null? ctx.MkAdd((ArithExpr)targetACU) : ctx.MkAdd((ArithExpr)targetACU, (ArithExpr)totalAcu);
-            }
-
-            var totalPriceHandle = s.MkMinimize(totalPrice); // minimize total price
-            var totalAcuHandle = s.MkMaximize(totalAcu);     // maximize total performance
-
-
+            var totalAcuHandle = s.MkMaximize(ctx.MkAdd(tmpAcu ));     // maximize total performance
+            var totalPriceHandle = s.MkMinimize(ctx.MkAdd(tmpPrice));  // minimize total price
 
             if (s.Check() == Status.SATISFIABLE)
             {
                 var m = s.Model;
                 WriteObject(m);
-                WriteObject(totalPriceHandle);
                 WriteObject(totalAcuHandle);
+                WriteObject(totalPriceHandle);
             }
+        }
+
+        private ArithExpr ScalProd(ArithExpr[] left, int[] right, Context ctx)
+        {
+            // vectors should be of the same length.
+            // TODO: verify this
+
+            var zero = ctx.MkInt(0);
+            ArithExpr ret = ctx.MkAdd(zero);
+            for (int i = 0; i < left.Length; i++)
+            {
+                ret = ctx.MkAdd(ret, ctx.MkMul(left[i], ctx.MkInt(right[i])));
+            }
+            return ret;
         }
     }
 

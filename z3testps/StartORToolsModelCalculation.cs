@@ -25,29 +25,26 @@ namespace z3testps
             int[] costVector = targetVMs.Select(x => (int)(double.Parse(x.retailPrice) * 10000)).ToArray();
             int[] acuVector = targetVMs.Select(x => int.Parse(x.ACUs)).ToArray();
 
+            IntVar[,] selectedVms;
+            List<LinearExpr> tmpSum;
+            List<LinearExpr> tmpAcu;
+            SolutionPrinter cb;
+            CpModel model;
+            CpSolver solver;
+            CpSolverStatus status;
 
-            IntVar[,] selectedVms = new IntVar[sourceVMs.Length, targetVMs.Length];
-            var tmpSum = new List<LinearExpr>();
-            var tmpAcu = new List<LinearExpr>();
 
-            SolutionPrinter cb = new SolutionPrinter(sourceVMs, targetVMs, selectedVms, ref _results, 300);
-            
-            var model = CpModel(sourceVMs, targetVMs, selectedVms, tmpSum, costVector, tmpAcu, acuVector);
+            model = InitializeModel(sourceVMs, targetVMs, costVector, acuVector, out selectedVms, out tmpSum, out tmpAcu, out cb);
             model.Maximize(LinearExpr.Sum(tmpAcu));
             
-
-            CpSolver solver = new CpSolver();
+            solver = new CpSolver();
             solver.StringParameters += "num_search_workers:4, log_search_progress: true, max_time_in_seconds:90 ";
-            CpSolverStatus status = solver.Solve(model, cb);
+            status = solver.Solve(model, cb);
 
-            // run again
-            selectedVms = new IntVar[sourceVMs.Length, targetVMs.Length];
-            tmpSum = new List<LinearExpr>();
-            tmpAcu = new List<LinearExpr>();
-            cb = new SolutionPrinter(sourceVMs, targetVMs, selectedVms, ref _results, 300);
-            model = CpModel(sourceVMs, targetVMs, selectedVms, tmpSum, costVector, tmpAcu, acuVector);
-
-            model.Add(LinearExpr.Sum(tmpAcu) >= (int)solver.ObjectiveValue);
+            // fix the optimized value by adding it as a constraint
+            // recreate and rerun the model
+            model = InitializeModel(sourceVMs, targetVMs, costVector, acuVector, out selectedVms, out tmpSum, out tmpAcu, out cb);
+            model.Add(LinearExpr.Sum(tmpAcu) >= (int)solver.ObjectiveValue); //objective from the previous run
             model.Minimize(LinearExpr.Sum(tmpSum));
 
             solver = new CpSolver();
@@ -58,7 +55,19 @@ namespace z3testps
             WriteObject(status);
         }
 
-        private static CpModel CpModel(SourceVMRecord[] sourceVMs, TargetVMRecord[] targetVMs, IntVar[,] selectedVms,
+        private CpModel InitializeModel(SourceVMRecord[] sourceVMs, TargetVMRecord[] targetVMs, int[] costVector, int[] acuVector,
+            out IntVar[,] selectedVms, out List<LinearExpr> tmpSum, out List<LinearExpr> tmpAcu, out SolutionPrinter cb)
+        {
+            CpModel model;
+            selectedVms = new IntVar[sourceVMs.Length, targetVMs.Length];
+            tmpSum = new List<LinearExpr>();
+            tmpAcu = new List<LinearExpr>();
+            cb = new SolutionPrinter(sourceVMs, targetVMs, selectedVms, ref _results, 300);
+            model = CreateModel(sourceVMs, targetVMs, selectedVms, tmpSum, costVector, tmpAcu, acuVector);
+            return model;
+        }
+
+        private CpModel CreateModel(SourceVMRecord[] sourceVMs, TargetVMRecord[] targetVMs, IntVar[,] selectedVms,
             List<LinearExpr> tmpSum, int[] costVector, List<LinearExpr> tmpAcu, int[] acuVector)
         {
             CpModel model = new CpModel();
