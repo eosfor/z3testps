@@ -69,12 +69,16 @@ namespace z3testps
             var totalAcuHandle = s.MkMaximize(ctx.MkAdd(tmpAcu ));     // maximize total performance
             var totalPriceHandle = s.MkMinimize(ctx.MkAdd(tmpPrice));  // minimize total price
 
+            var modelText = s.ToString();
+            File.WriteAllText(@"C:\temp\z3testps\smtlib-model.txt", modelText);
+
             if (s.Check() == Status.SATISFIABLE)
             {
                 var m = s.Model;
                 WriteObject(m);
                 WriteObject(totalAcuHandle);
                 WriteObject(totalPriceHandle);
+                WriteObject(ctx);
             }
         }
 
