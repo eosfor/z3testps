@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Google.OrTools.Sat;
 using System.Management.Automation;
+using System.Text;
 
 namespace z3testps
 {
@@ -10,20 +11,37 @@ namespace z3testps
     public class StartOrToolsModelCalculation : BaseCMDLet
     {
         [Parameter(Position = 0, Mandatory = true)]
-        public PSObject[] SourceVM;
+        [ValidateNotNullOrEmpty]
+        public new PSObject[] SourceVM;
 
         [Parameter(Position = 1, Mandatory = true)]
-        public PSObject[] TargetVM;
+        [ValidateNotNullOrEmpty]
+        public new PSObject[] TargetVM;
+
+        [Parameter(Position = 2, Mandatory = false)]
+        public int MaxExecutionTimeSec = 90;
+
+        [Parameter(Position = 3, Mandatory = false)]
+        public SwitchParameter EnableOrToolsLog;
+
 
         private List<VMMappingResult> _results = new List<VMMappingResult>();
 
         protected override void ProcessRecord()
         {
-            SourceVMRecord[] sourceVMs = MakeSourceVMsArray(SourceVM); // length = 87
-            TargetVMRecord[] targetVMs = MakeTargetVMsArray(TargetVM); // length = 240
+            SourceVMRecord[] sourceVMs = MakeSourceVMsArray(SourceVM);
+            TargetVMRecord[] targetVMs = MakeTargetVMsArray(TargetVM);
 
             int[] costVector = targetVMs.Select(x => (int)(double.Parse(x.retailPrice) * 10000)).ToArray();
             int[] acuVector = targetVMs.Select(x => int.Parse(x.ACUs)).ToArray();
+
+            string orToolsStringParameters = string.Empty;
+            orToolsStringParameters += $"max_time_in_seconds:{MaxExecutionTimeSec}";
+            orToolsStringParameters += $"num_search_workers:4";
+            if (EnableOrToolsLog.IsPresent)
+            {
+                orToolsStringParameters += "log_search_progress: true";
+            }
 
             IntVar[,] selectedVms;
             List<LinearExpr> tmpSum;
@@ -38,8 +56,17 @@ namespace z3testps
             model.Maximize(LinearExpr.Sum(tmpAcu));
             
             solver = new CpSolver();
-            solver.StringParameters += "num_search_workers:4, log_search_progress: true, max_time_in_seconds:90 ";
+            solver.StringParameters = orToolsStringParameters;
             status = solver.Solve(model, cb);
+
+            if (status == CpSolverStatus.Optimal || status == CpSolverStatus.Feasible)
+            {
+                WriteObject(_results);
+            }
+            else
+            {
+                WriteObject(status);
+            }
 
             // fix the optimized value by adding it as a constraint
             // recreate and rerun the model
@@ -48,11 +75,17 @@ namespace z3testps
             model.Minimize(LinearExpr.Sum(tmpSum));
 
             solver = new CpSolver();
-            solver.StringParameters += "num_search_workers:4, log_search_progress: true, max_time_in_seconds:90 ";
+            solver.StringParameters = orToolsStringParameters;
             status = solver.Solve(model, cb);
-            
-            WriteObject(_results);
-            WriteObject(status);
+
+            if (status == CpSolverStatus.Optimal || status == CpSolverStatus.Feasible)
+            {
+                WriteObject(_results);
+            }
+            else
+            {
+                WriteObject(status);
+            }
         }
 
         private CpModel InitializeModel(SourceVMRecord[] sourceVMs, TargetVMRecord[] targetVMs, int[] costVector, int[] acuVector,
